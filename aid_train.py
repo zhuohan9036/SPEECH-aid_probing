@@ -105,7 +105,7 @@ def train(args):
     optimizer = optim.AdamW(aid_model.parameters(), lr=args.learning_rate)
     max_epochs = args.max_epochs
 
-    for epoch in range(1):
+    for epoch in range(max_epochs):
         tr_loss = 0.0
         num_train_examples, num_train_steps = 0, 0
         logger.info(f"Training Epoch {epoch+1}/{max_epochs}")
