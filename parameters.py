@@ -13,7 +13,26 @@ def parse():
     parser.add_argument("--training_data_path", type=str, default="data/metadata/aid_train.json")
     parser.add_argument("--test_data_path", type=str, default="data/metadata/aid_test.json")
 
+    parser.add_argument("--pretrained_model_name", type=str, default="facebook/wav2vec2-base")
+
     parser.add_argument("--target_sample_rate", type=int, default=16000)
+    parser.add_argument("--num_labels", type=int, default=7)
+    parser.add_argument("--hidden_proj_dim", type=int, default=256)
+    parser.add_argument("--batch_size", type=int, default=48)
+
+
+    # GPU
+    parser.add_argument("--visible_cuda_device", type=str, default="0,2,3")
+
+    # training 
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--log_dir", type=str, default="logs")
+    parser.add_argument("--model_dir", type=str, default="pts")
+    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--max_epochs", type=int, default=50)
+    parser.add_argument("--label_smoothing", type=float, default=0.25)
+    parser.add_argument("--small_sample", action="store_true")
 
     args = parser.parse_args()
 
