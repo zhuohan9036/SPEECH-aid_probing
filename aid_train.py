@@ -79,7 +79,7 @@ def train(args):
     test_loader = DataLoader(
         test_dataset,
         batch_size=args.batch_size,
-        # shuffle=False,
+        shuffle=False,
         num_workers=args.num_workers,
         collate_fn=aid_collate_fn,
     )
@@ -88,7 +88,7 @@ def train(args):
         train_loader = DataLoader(
             train_dataset,
             batch_size=args.batch_size,
-            # shuffle=True,
+            shuffle=True,
             num_workers=args.num_workers,
             collate_fn=aid_collate_fn,
             sampler=torch.utils.data.SubsetRandomSampler(range(100)),
@@ -96,7 +96,7 @@ def train(args):
         test_loader = DataLoader(
             test_dataset,
             batch_size=args.batch_size,
-            # shuffle=False,
+            shuffle=False,
             num_workers=args.num_workers,
             collate_fn=aid_collate_fn,
             sampler=torch.utils.data.SubsetRandomSampler(range(100)),

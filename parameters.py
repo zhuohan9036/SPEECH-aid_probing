@@ -22,7 +22,7 @@ def parse():
 
 
     # GPU
-    parser.add_argument("--visible_cuda_device", type=str, default="0,2,3")
+    parser.add_argument("--visible_cuda_device", type=str, default="0,1")
 
     # training 
     parser.add_argument("--seed", type=int, default=42)
