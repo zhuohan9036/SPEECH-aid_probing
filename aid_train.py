@@ -15,6 +15,7 @@ import logging
 import datetime
 import os
 import json
+import copy
 
 
 def set_seed(seed: int):
@@ -37,7 +38,7 @@ def set_logger(args):
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
     logger.addHandler(fh)
-    return logger
+    return logger, formatted_time
 
 
 def build_optimizer(model, args):
@@ -76,7 +77,7 @@ def train(args):
     set_seed(args.seed)
     logging.basicConfig(level=logging.INFO)
     
-    logger = set_logger(args)
+    logger, log_filename = set_logger(args)
     if torch.cuda.is_available():
         n_gpu = torch.cuda.device_count()
         logger.info(f"Number of GPUs available: {n_gpu}")
@@ -97,7 +98,7 @@ def train(args):
         aid_model = nn.DataParallel(aid_model)
         logger.info(f"Using DataParallel on {torch.cuda.device_count()} GPUs")
 
-    train_dataset = AIDDataset(args.training_data_path, target_sample_rate=args.target_sample_rate)
+    train_dataset = AIDDataset(args.training_data_path, apply_perturbation=args.apply_perturbation, target_sample_rate=args.target_sample_rate, perturbation_prob=args.perturbation_prob)
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -106,7 +107,7 @@ def train(args):
         collate_fn=aid_collate_fn,
     )
 
-    test_dataset = AIDDataset(args.test_data_path, target_sample_rate=args.target_sample_rate)
+    test_dataset = AIDDataset(args.test_data_path, apply_perturbation=False, target_sample_rate=args.target_sample_rate, perturbation_prob=args.perturbation_prob)
     test_loader = DataLoader(
         test_dataset,
         batch_size=args.batch_size,
@@ -143,6 +144,23 @@ def train(args):
     # NOTE: end of debug code for failure to converge
     
     max_epochs = args.max_epochs
+
+    label2id_path = Path("data/metadata/label2id.json")
+
+    with label2id_path.open("r", encoding="utf-8") as f:
+        label2id = json.load(f)
+
+    id2label = {v: k for k, v in label2id.items()}
+
+    # NOTE: code for saving the best model
+    best_macro_f1 = -1.0
+    best_epoch = -1
+    best_model_state_dict = None
+    best_optimizer_state_dict = None
+    best_train_loss = None
+    best_test_result = None
+    # NOTE: end of code for saving the best model
+    
     
     # NOTE: debug code for failure to converge: check which parameters require gradients
     # for name, param in aid_model.named_parameters():
@@ -180,6 +198,68 @@ def train(args):
             # NOTE: end of debug code for failure to converge
             optimizer.step()
         logger.info(f"Epoch {epoch+1} - Average Training Loss: {tr_loss / len(train_loader):.4f}")
+        
+        # NOTE: uncomment the following block to run evaluation after each epoch
+        test_result = evaluate(
+            model=aid_model,
+            data_loader=test_loader,
+            device=device,
+            id2label=id2label,
+        )
+
+        current_macro_f1 = test_result["macro_f1"]
+
+        logger.info(
+            f"Epoch {epoch + 1} - "
+            f"Test Loss: {test_result['loss']:.4f}, "
+            f"Acc: {test_result['accuracy']:.4f}, "
+            f"Macro P/R/F1: "
+            f"{test_result['macro_precision']:.4f} / "
+            f"{test_result['macro_recall']:.4f} / "
+            f"{test_result['macro_f1']:.4f}, "
+            f"Weighted P/R/F1: "
+            f"{test_result['weighted_precision']:.4f} / "
+            f"{test_result['weighted_recall']:.4f} / "
+            f"{test_result['weighted_f1']:.4f}"
+        )
+
+        for label_name, metrics in test_result["per_class_metrics"].items():
+            logger.info(
+                f"{label_name}: "
+                f"P={metrics['precision']:.4f}, "
+                f"R={metrics['recall']:.4f}, "
+                f"F1={metrics['f1']:.4f}, "
+                f"support={metrics['support']}"
+            )
+
+        logger.info("\n" + test_result["classification_report"])
+        logger.info(f"\nConfusion Matrix:\n{test_result['confusion_matrix']}")
+        
+        if current_macro_f1 > best_macro_f1:
+            best_macro_f1 = current_macro_f1
+            best_epoch = epoch + 1
+            best_train_loss = tr_loss / len(train_loader)
+            best_test_result = test_result
+
+            model_to_save = aid_model.module if hasattr(aid_model, "module") else aid_model
+
+            best_model_state_dict = copy.deepcopy(model_to_save.state_dict())
+            best_optimizer_state_dict = copy.deepcopy(optimizer.state_dict())
+
+            logger.info(
+                f"New best model found at epoch {best_epoch}. "
+                f"Macro-F1={best_macro_f1:.4f}. "
+                f"Checkpoint will be saved after training finishes."
+            )
+
+        else:
+            logger.info(
+                f"Epoch {epoch + 1} did not improve best Macro-F1. "
+                f"Current Macro-F1={current_macro_f1:.4f}, "
+                f"Best Macro-F1={best_macro_f1:.4f} at epoch {best_epoch}."
+            )
+            # NOTE: end of code for testing after each epoch
+        
         # """
         # NOTE: end of training loop
     
@@ -210,65 +290,94 @@ def train(args):
     #         )
     # NOTE: end of one-batch overfit test
 
-    label2id_path = Path("data/metadata/label2id.json")
+    # NOTE: uncomment the following block to run evaluation after training
+    # test_result = evaluate(
+    #     model=aid_model,
+    #     data_loader=test_loader,
+    #     device=device,
+    #     id2label=id2label,
+    # )
 
-    with label2id_path.open("r", encoding="utf-8") as f:
-        label2id = json.load(f)
+    # logger.info(
+    #     f"Epoch {epoch + 1} - "
+    #     f"Test Loss: {test_result['loss']:.4f}, "
+    #     f"Acc: {test_result['accuracy']:.4f}, "
+    #     f"Macro P/R/F1: "
+    #     f"{test_result['macro_precision']:.4f} / "
+    #     f"{test_result['macro_recall']:.4f} / "
+    #     f"{test_result['macro_f1']:.4f}, "
+    #     f"Weighted P/R/F1: "
+    #     f"{test_result['weighted_precision']:.4f} / "
+    #     f"{test_result['weighted_recall']:.4f} / "
+    #     f"{test_result['weighted_f1']:.4f}"
+    # )
 
-    id2label = {v: k for k, v in label2id.items()}
+    # for label_name, metrics in test_result["per_class_metrics"].items():
+    #     logger.info(
+    #         f"{label_name}: "
+    #         f"P={metrics['precision']:.4f}, "
+    #         f"R={metrics['recall']:.4f}, "
+    #         f"F1={metrics['f1']:.4f}, "
+    #         f"support={metrics['support']}"
+    #     )
+
+    # logger.info("\n" + test_result["classification_report"])
+    # logger.info(f"\nConfusion Matrix:\n{test_result['confusion_matrix']}")
+
+    # logger.info(f"Saving model checkpoint to {model_dir}")
+    # checkpoint_path = model_dir / f"aid_model_epoch_{epoch+1}_{log_filename}.pt"
+
+    # model_to_save = aid_model.module if hasattr(aid_model, "module") else aid_model
+
+    # torch.save(
+    #     {
+    #         "epoch": epoch + 1,
+    #         "model_state_dict": model_to_save.state_dict(),
+    #         "optimizer_state_dict": optimizer.state_dict(),
+    #         # "train_loss": avg_train_loss,
+    #         # "test_acc": test_acc,
+    #     },
+    #     checkpoint_path,
+    # )
+    # logger.info(f"Model checkpoint saved to {checkpoint_path}")
+    # NOTE: end of evaluation and checkpoint saving
     
-    test_result = evaluate(
-        model=aid_model,
-        data_loader=test_loader,
-        device=device,
-        id2label=id2label,
-    )
-
-    logger.info(
-        f"Epoch {epoch + 1} - "
-        f"Test Loss: {test_result['loss']:.4f}, "
-        f"Acc: {test_result['accuracy']:.4f}, "
-        f"Macro P/R/F1: "
-        f"{test_result['macro_precision']:.4f} / "
-        f"{test_result['macro_recall']:.4f} / "
-        f"{test_result['macro_f1']:.4f}, "
-        f"Weighted P/R/F1: "
-        f"{test_result['weighted_precision']:.4f} / "
-        f"{test_result['weighted_recall']:.4f} / "
-        f"{test_result['weighted_f1']:.4f}"
-    )
-
-    for label_name, metrics in test_result["per_class_metrics"].items():
-        logger.info(
-            f"{label_name}: "
-            f"P={metrics['precision']:.4f}, "
-            f"R={metrics['recall']:.4f}, "
-            f"F1={metrics['f1']:.4f}, "
-            f"support={metrics['support']}"
+    # NOTE: code for saving the best model checkpoint
+    if best_model_state_dict is not None:
+        checkpoint_path = (
+            model_dir
+            / f"aid_model_best_epoch_{best_epoch}_{log_filename}.pt"
         )
 
-    logger.info("\n" + test_result["classification_report"])
-    logger.info(f"\nConfusion Matrix:\n{test_result['confusion_matrix']}")
+        logger.info(f"Saving best model checkpoint to {checkpoint_path}")
 
-    logger.info(f"Saving model checkpoint to {model_dir}")
-    checkpoint_path = model_dir / f"aid_model_epoch_{epoch+1}.pt"
+        torch.save(
+            {
+                "epoch": best_epoch,
+                "model_state_dict": best_model_state_dict,
+                "optimizer_state_dict": best_optimizer_state_dict,
+                "train_loss": best_train_loss,
+                "test_loss": best_test_result["loss"],
+                "test_acc": best_test_result["accuracy"],
+                "macro_precision": best_test_result["macro_precision"],
+                "macro_recall": best_test_result["macro_recall"],
+                "macro_f1": best_test_result["macro_f1"],
+                "weighted_precision": best_test_result["weighted_precision"],
+                "weighted_recall": best_test_result["weighted_recall"],
+                "weighted_f1": best_test_result["weighted_f1"],
+                "label2id": label2id,
+                "id2label": id2label,
+            },
+            checkpoint_path,
+        )
 
-    model_to_save = aid_model.module if hasattr(aid_model, "module") else aid_model
-
-    torch.save(
-        {
-            "epoch": epoch + 1,
-            "model_state_dict": model_to_save.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            # "train_loss": avg_train_loss,
-            # "test_acc": test_acc,
-        },
-        checkpoint_path,
-    )
-    logger.info(f"Model checkpoint saved to {checkpoint_path}")
-    
-    
-
+        logger.info(
+            f"Best model checkpoint saved. "
+            f"Best epoch={best_epoch}, Best Macro-F1={best_macro_f1:.4f}"
+        )
+    else:
+        logger.warning("No best model was found. Check whether training/evaluation ran correctly.")
+    # NOTE: end of code for saving the best model checkpoint
 
 
     # sanity check

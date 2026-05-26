@@ -20,6 +20,9 @@ def parse():
     parser.add_argument("--hidden_proj_dim", type=int, default=256)
     parser.add_argument("--batch_size", type=int, default=48)
 
+    parser.add_argument("--apply_perturbation", action="store_true")
+    parser.add_argument("--perturbation_prob", type=float, default=0.75)
+
 
     # GPU
     parser.add_argument("--visible_cuda_device", type=str, default="0,1")

@@ -282,8 +282,33 @@ def sanity_check(args):
     print("Unknown speakers:", sorted(set(unknown_speakers)))
 
 
+def voice_perturbation_check(args):
+    from aid_dataset import VoicePerturbation
+    import torchaudio
+    import torch
+
+    perturb = VoicePerturbation(sample_rate=args.target_sample_rate, apply_prob=args.perturbation_prob)
+    data = get_json_content(args.test_data_path)[:10]
+    for idx, item in enumerate(data):
+        wave_path = item["wav_path"]
+        waveform, cur_sample_rate = torchaudio.load(wave_path)
+        if waveform.shape[0] > 1:
+            waveform = torch.mean(waveform, dim=0, keepdim=True)
+        if cur_sample_rate != args.target_sample_rate:
+            waveform = torchaudio.functional.resample(
+                waveform, 
+                orig_freq=cur_sample_rate,
+                new_freq=args.target_sample_rate
+            )
+        waveform = waveform.squeeze(0)
+        perturbed_waveform = perturb(waveform)
+        # print(f"Original: {waveform[:10]}, Perturbed: {perturbed_waveform[:10]}")
+        torchaudio.save(f"data/tmp/perturbation_check_{idx}_original.wav", waveform.unsqueeze(0).cpu(), args.target_sample_rate)
+        torchaudio.save(f"data/tmp/perturbation_check_{idx}_perturbed.wav", perturbed_waveform.unsqueeze(0).cpu(), args.target_sample_rate)
+
 
 if __name__ == "__main__":
     args = parse()
     # organize_source_data(args)
-    sanity_check(args)  
+    # sanity_check(args)  
+    voice_perturbation_check(args)
