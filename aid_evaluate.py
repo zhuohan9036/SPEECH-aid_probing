@@ -28,6 +28,7 @@ def evaluate(model, data_loader, device, id2label=None):
 
         loss = outputs["loss"]
         logits = outputs["logits"]
+        # print(logits.shape)
         preds = torch.argmax(logits, dim=-1)
 
         if loss.dim() > 0:

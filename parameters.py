@@ -31,7 +31,7 @@ def parse():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--log_dir", type=str, default="logs")
     parser.add_argument("--model_dir", type=str, default="pts")
-    parser.add_argument("--num_workers", type=int, default=4)
+    parser.add_argument("--num_workers", type=int, default=0)
     # parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--wav2vec2_learning_rate", type=float, default=1e-5)
     parser.add_argument("--head_learning_rate", type=float, default=3e-3)

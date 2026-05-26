@@ -245,11 +245,20 @@ def sanity_check(args):
 
     aid_train = [x for x in checked if x["split"] == "aid_train"]
     aid_test = [x for x in checked if x["split"] == "aid_test"]
+    
+    print("label2id:", label2id)
+    print("id2label:", {v: k for k, v in label2id.items()})
 
-    set_json_file(Path.joinpath(out_dir, "metadata_checked.json"), checked)
+    for split_name, data in [("train", aid_train), ("test", aid_test)]:
+        print(split_name)
+        print("accent:", Counter(x["accent_label"] for x in data))
+        print("label_id:", Counter(x["label_id"] for x in data))
+        print("speakers:", sorted(set(x["speaker_id"] for x in data)))
 
-    set_json_file(Path.joinpath(out_dir, "aid_train.json"), aid_train)
-    set_json_file(Path.joinpath(out_dir, "aid_test.json"), aid_test)
+    # set_json_file(Path.joinpath(out_dir, "metadata_checked.json"), checked)
+
+    # set_json_file(Path.joinpath(out_dir, "aid_train.json"), aid_train)
+    # set_json_file(Path.joinpath(out_dir, "aid_test.json"), aid_test)
     print("Total utterances:", len(checked))
     print("Train utterances:", len(aid_train))
     print("Test utterances:", len(aid_test))
@@ -307,8 +316,9 @@ def voice_perturbation_check(args):
         torchaudio.save(f"data/tmp/perturbation_check_{idx}_perturbed.wav", perturbed_waveform.unsqueeze(0).cpu(), args.target_sample_rate)
 
 
+
 if __name__ == "__main__":
     args = parse()
     # organize_source_data(args)
-    # sanity_check(args)  
-    voice_perturbation_check(args)
+    sanity_check(args)  
+    # voice_perturbation_check(args)

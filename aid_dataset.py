@@ -28,6 +28,7 @@ class VoicePerturbation:
         self.apply_prob = apply_prob
         self.beta_min = beta_min
         self.beta_max = beta_max
+        self.pitch_cache = {}
 
     def sample_beta(self):
         beta = random.uniform(self.beta_min, self.beta_max)
@@ -35,7 +36,7 @@ class VoicePerturbation:
             beta = 1.0 / beta
         return beta
 
-    def apply_format_scaling(self, waveform):
+    def apply_formant_scaling(self, waveform):
         if not PARSELMOUTH_AVAILABLE:
             return waveform
         beta = self.sample_beta()
@@ -91,17 +92,24 @@ class VoicePerturbation:
         # return wav.squeeze(0)
         beta = self.sample_beta()
         n_steps = 12.0 * math.log2(beta)
+        n_steps = round(n_steps * 2) / 2.0
+        if n_steps not in self.pitch_cache:
+            self.pitch_cache[n_steps] = torchaudio.transforms.PitchShift(
+                sample_rate=self.sample_rate,
+                n_steps=n_steps,
+            )
         wav = waveform.unsqueeze(0)  # (1, num_samples)
-        device = wav.device
-        wav = wav.cpu()  
-        pitch_shift = torchaudio.transforms.PitchShift(
-            sample_rate=self.sample_rate,
-            n_steps=n_steps,
-        )
+        # device = wav.device
+        # wav = wav.cpu()  
+        # pitch_shift = torchaudio.transforms.PitchShift(
+        #     sample_rate=self.sample_rate,
+        #     n_steps=n_steps,
+        # )
         with torch.no_grad():
-            wav = pitch_shift(wav)
+            # wav = pitch_shift(wav)
+            wav = self.pitch_cache[n_steps](wav)
 
-        wav = wav.to(device)
+        # wav = wav.to(device)
 
         return wav.squeeze(0)
     
@@ -148,6 +156,7 @@ class VoicePerturbation:
         if random.random() > self.apply_prob:
             return waveform
         original_length = waveform.shape[0]
+        waveform = self.apply_formant_scaling(waveform)
         waveform = self.apply_pitch_shift(waveform)
         waveform = self.apply_random_equalizer(waveform)
         waveform = self.fix_length(waveform, original_length)

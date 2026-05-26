@@ -99,6 +99,23 @@ def train(args):
         logger.info(f"Using DataParallel on {torch.cuda.device_count()} GPUs")
 
     train_dataset = AIDDataset(args.training_data_path, apply_perturbation=args.apply_perturbation, target_sample_rate=args.target_sample_rate, perturbation_prob=args.perturbation_prob)
+    
+    # NOTE: debug code for checking raw train_dataset items
+    # import time
+
+    # print("Start checking raw train_dataset items")
+
+    # for i in range(100):
+    #     t0 = time.time()
+    #     print(f"Before get item {i}", flush=True)
+    #     item = train_dataset[i]
+    #     print(
+    #         f"After get item {i}, time={time.time() - t0:.2f}s, "
+    #         f"keys={item.keys()}",
+    #         flush=True
+    #     )
+    # NOTE: end debug block
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -133,6 +150,21 @@ def train(args):
             collate_fn=aid_collate_fn,
             sampler=torch.utils.data.SubsetRandomSampler(range(100)),
         )
+    
+    # NOTE: sanity check for data loading and label correctness
+    # batch = next(iter(test_loader))
+    # print(batch["labels"][:20])
+    # from json_file_operations import get_json_content
+    # test_metadata = get_json_content(args.test_data_path)
+
+    # for item in test_metadata[:20]:
+    #     print(
+    #         item["speaker_id"],
+    #         item["accent_label"],
+    #         item["label_id"],
+    #         item["utt_id"],
+    #     )
+    # NOTE: end of sanity check for data loading and label correctness
 
     optimizer = build_optimizer(aid_model, args)
     # NOTE: debug code for failure to converge: check number of trainable parameters and optimizer parameters
@@ -145,12 +177,20 @@ def train(args):
     
     max_epochs = args.max_epochs
 
+    # NOTE: comment out the following block to check id2label
+    # #%%
+    # from pathlib import Path
+    # import json
+    
     label2id_path = Path("data/metadata/label2id.json")
 
     with label2id_path.open("r", encoding="utf-8") as f:
         label2id = json.load(f)
 
     id2label = {v: k for k, v in label2id.items()}
+    # print(id2label)
+    # #%%
+    # NOTE: end of code to check id2label
 
     # NOTE: code for saving the best model
     best_macro_f1 = -1.0
@@ -171,11 +211,13 @@ def train(args):
     # NOTE: when intending to block the training loop, comment out the triple quotes below 
     # """
     for epoch in range(max_epochs):
+    # for epoch in range(1):  # NOTE: debug code for failure to converge: run only one epoch
         tr_loss = 0.0
         num_train_examples, num_train_steps = 0, 0
         logger.info(f"Training Epoch {epoch+1}/{max_epochs}")
         
         for step, batch in enumerate(tqdm(train_loader)):
+            logger.info(f"Got batch {step}")
             num_train_steps += 1
             num_train_examples += batch["input_values"].size(0)
             aid_model.train()
